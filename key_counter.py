@@ -2,15 +2,14 @@ import tkinter as tk
 from tkinter import ttk
 from pynput.keyboard import Listener, Key
 import threading
+import time
 
 class KeyCounterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Key Counter")
-        self.root.geometry("420x630")
+        self.root.geometry("480x650")
         self.root.resizable(False, False)
-        
-        # 배경색 설정 
         self.root.configure(bg="#F8F9FA")
         
         # 변수 초기화
@@ -19,6 +18,11 @@ class KeyCounterApp:
         self.is_counting = False
         self.listener = None
         self.key_pressed = False
+        
+        # 연타 기록 관련 변수
+        self.first_key_time = None
+        self.last_event_time = None
+        self.recording = False
         
         # 색상 테마
         self.colors = {
@@ -34,34 +38,14 @@ class KeyCounterApp:
             'count_bg': '#F0F7FF'
         }
         
-        # UI 구성
         self.setup_ui()
         
     def setup_ui(self):
-        # 메인 컨테이너
+        """UI 구성"""
         main_container = tk.Frame(self.root, bg=self.colors['bg'])
         main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
         
-        # 헤더 섹션
-        header_frame = tk.Frame(main_container, bg=self.colors['bg'])
-        header_frame.pack(fill=tk.X, pady=(0, 12))
-        
-        # 타이틀
-        title_label = tk.Label(header_frame, 
-                              text="Key Counter",
-                              font=("Segoe UI", 20, "bold"),
-                              fg=self.colors['text_primary'],
-                              bg=self.colors['bg'])
-        title_label.pack()
-        
-        subtitle_label = tk.Label(header_frame,
-                                 text="실시간 키 연타 횟수 측정",
-                                 font=("Segoe UI", 9),
-                                 fg=self.colors['text_secondary'],
-                                 bg=self.colors['bg'])
-        subtitle_label.pack(pady=(2, 0))
-        
-        # 키 선택 카드
+        # 키 선택 영역
         key_card = tk.Frame(main_container, bg=self.colors['card'], 
                            relief=tk.FLAT, bd=0)
         key_card.pack(fill=tk.X, pady=(0, 10))
@@ -98,7 +82,7 @@ class KeyCounterApp:
                                           bg=self.colors['card'])
         self.selected_key_label.pack()
         
-        # 카운트 디스플레이 카드
+        # 카운트 디스플레이 영역
         count_card = tk.Frame(main_container, bg=self.colors['count_bg'],
                             relief=tk.FLAT, bd=0)
         count_card.pack(fill=tk.X, pady=(0, 10))
@@ -114,105 +98,164 @@ class KeyCounterApp:
                              bg=self.colors['count_bg'])
         count_title.pack()
         
-        self.count_label = tk.Label(count_inner,
+        count_display_frame = tk.Frame(count_inner, bg=self.colors['count_bg'])
+        count_display_frame.pack(pady=(5, 0))
+        
+        self.count_label = tk.Label(count_display_frame,
                                    text="0",
-                                   font=("Segoe UI", 44, "bold"),
+                                   font=("Segoe UI", 40, "bold"),
                                    fg=self.colors['primary'],
                                    bg=self.colors['count_bg'])
-        self.count_label.pack(pady=(2, 2))
+        self.count_label.pack(side=tk.LEFT)
         
-        count_unit = tk.Label(count_inner,
-                            text="회",
-                            font=("Segoe UI", 11, "bold"),
+        count_unit = tk.Label(count_display_frame,
+                            text=" 회",
+                            font=("Segoe UI", 16, "bold"),
                             fg=self.colors['text_secondary'],
                             bg=self.colors['count_bg'])
-        count_unit.pack()
+        count_unit.pack(side=tk.LEFT, anchor='s', pady=(0, 8))
         
-        # 컨트롤 버튼 섹션
+        help_label = tk.Label(count_inner,
+                            text="기록이 안되면 관리자 권한으로 실행하세요",
+                            font=("Segoe UI", 8, "bold"),
+                            fg="#999999",
+                            bg=self.colors['count_bg'])
+        help_label.pack(pady=(5, 0))
+        
+        # 컨트롤 버튼
         control_frame = tk.Frame(main_container, bg=self.colors['bg'])
-        control_frame.pack(fill=tk.X, pady=(0, 8))
+        control_frame.pack(fill=tk.X, pady=(0, 10))
         
         button_container = tk.Frame(control_frame, bg=self.colors['bg'])
         button_container.pack()
         
         self.start_button = tk.Button(button_container,
                                       text="▶  시작",
-                                      font=("Segoe UI", 11, "bold"),
+                                      font=("Segoe UI", 10, "bold"),
                                       bg=self.colors['success'],
                                       fg="white",
                                       activebackground="#45A317",
                                       activeforeground="white",
                                       relief=tk.FLAT,
                                       cursor="hand2",
-                                      padx=20,
-                                      pady=10,
+                                      padx=15,
+                                      pady=8,
                                       width=8,
                                       command=self.start_counting)
         self.start_button.pack(side=tk.LEFT, padx=3)
         
         self.stop_button = tk.Button(button_container,
                                      text="⏸  정지",
-                                     font=("Segoe UI", 11, "bold"),
+                                     font=("Segoe UI", 10, "bold"),
                                      bg=self.colors['danger'],
                                      fg="white",
                                      activebackground="#D93D3F",
                                      activeforeground="white",
                                      relief=tk.FLAT,
                                      cursor="hand2",
-                                     padx=20,
-                                     pady=10,
+                                     padx=15,
+                                     pady=8,
                                      width=8,
                                      state=tk.DISABLED,
                                      command=self.stop_counting)
         self.stop_button.pack(side=tk.LEFT, padx=3)
         
-        # 리셋 버튼
-        self.reset_button = tk.Button(control_frame,
+        self.reset_button = tk.Button(button_container,
                                       text="초기화",
                                       font=("Segoe UI", 10, "bold"),
                                       bg=self.colors['card'],
                                       fg=self.colors['text_primary'],
                                       activebackground="#F0F0F0",
                                       activeforeground=self.colors['text_primary'],
-                                      relief=tk.FLAT,
+                                      relief=tk.SOLID,
+                                      borderwidth=1,
                                       cursor="hand2",
                                       padx=15,
                                       pady=8,
+                                      width=8,
                                       command=self.reset_count)
-        self.reset_button.pack(pady=(6, 0))
+        self.reset_button.pack(side=tk.LEFT, padx=3)
         
-        # 상태 표시
-        status_frame = tk.Frame(main_container, bg=self.colors['card'],
+        # 연타 기록 테이블 (Treeview)
+        record_card = tk.Frame(main_container, bg=self.colors['card'],
                               relief=tk.FLAT, bd=0)
-        status_frame.pack(fill=tk.X)
+        record_card.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
+        self._add_shadow(record_card)
         
-        self.status_label = tk.Label(status_frame,
-                                    text="● 대기 중",
-                                    font=("Segoe UI", 9, "bold"),
-                                    fg=self.colors['text_secondary'],
-                                    bg=self.colors['card'],
-                                    pady=8)
-        self.status_label.pack()
+        record_inner = tk.Frame(record_card, bg=self.colors['card'])
+        record_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=12)
         
-        # 안내 문구
-        help_label = tk.Label(status_frame,
-                            text="카운트가 작동하지 않으면 관리자 권한으로 실행해보세요",
-                            font=("Segoe UI", 10, "bold"),
-                            fg="#777777",
-                            bg=self.colors['card'])
-        help_label.pack(pady=(0, 6))
+        record_label = tk.Label(record_inner,
+                               text="연타 기록",
+                               font=("Segoe UI", 10, "bold"),
+                               fg=self.colors['text_primary'],
+                               bg=self.colors['card'])
+        record_label.pack(anchor=tk.W, pady=(0, 8))
+        
+        # Treeview 스타일
+        style = ttk.Style()
+        style.theme_use('default')
+        
+        style.configure("Treeview.Heading",
+                       background="#F0F7FF",
+                       foreground=self.colors['text_secondary'],
+                       font=("Segoe UI", 9, "bold"),
+                       borderwidth=0,
+                       relief="flat")
+        
+        style.configure("Treeview",
+                       background="#FFFFFF",
+                       foreground=self.colors['text_primary'],
+                       fieldbackground="#FFFFFF",
+                       font=("Segoe UI", 9),
+                       borderwidth=0,
+                       rowheight=25)
+        
+        style.map("Treeview",
+                 background=[('selected', '#E3F2FD')],
+                 foreground=[('selected', self.colors['text_primary'])])
+        
+        tree_frame = tk.Frame(record_inner, bg=self.colors['card'])
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+        
+        columns = ('key', 'event', 'elapsed', 'interval')
+        self.tree = ttk.Treeview(tree_frame,
+                                columns=columns,
+                                show='headings',
+                                height=10,
+                                selectmode='none')
+        
+        self.tree.heading('key', text='키')
+        self.tree.heading('event', text='이벤트')
+        self.tree.heading('elapsed', text='경과시간')
+        self.tree.heading('interval', text='간격')
+        
+        self.tree.column('key', width=100, anchor='w')
+        self.tree.column('event', width=80, anchor='center')
+        self.tree.column('elapsed', width=100, anchor='center')
+        self.tree.column('interval', width=80, anchor='center')
+        
+        scrollbar = ttk.Scrollbar(tree_frame,
+                                 orient="vertical",
+                                 command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 교차 행 색상
+        self.tree.tag_configure('oddrow', background='#FFFFFF')
+        self.tree.tag_configure('evenrow', background='#F9FAFB')
     
     def _add_shadow(self, widget):
-        """위젯에 그림자 효과"""
+        """위젯에 테두리 효과 추가"""
         widget.config(highlightbackground=self.colors['border'],
                      highlightthickness=1)
         
     def set_target_key(self):
-        """타겟 키 설정"""
+        """측정할 키를 선택"""
         self.key_button.config(text="키를 눌러주세요...", bg="#FFA940")
-        self.status_label.config(text="● 키 입력 대기 중...", fg="#FFA940")
         
-        # 임시 리스너로 키 입력 받기
         def on_press(key):
             self.target_key = key
             try:
@@ -224,70 +267,133 @@ class KeyCounterApp:
                                           fg=self.colors['success'])
             self.key_button.config(text="키를 선택하려면 클릭하세요",
                                   bg=self.colors['primary'])
-            self.status_label.config(text=f"● '{key_name}' 키 선택 완료",
-                                   fg=self.colors['success'])
-            return False  # 리스너 종료
+            return False
         
         temp_listener = Listener(on_press=on_press)
         temp_listener.start()
         
     def start_counting(self):
-        """카운팅 시작"""
+        """연타 측정 시작"""
         if self.target_key is None:
-            self.status_label.config(text="⚠️ 먼저 키를 선택해주세요!",
-                                   fg=self.colors['danger'])
+            self.key_button.config(bg=self.colors['danger'])
+            self.root.after(500, lambda: self.key_button.config(bg=self.colors['primary']))
             return
         
         self.is_counting = True
+        self.recording = False
         self.start_button.config(state=tk.DISABLED, bg="#D0D0D0")
         self.stop_button.config(state=tk.NORMAL, bg=self.colors['danger'])
         self.key_button.config(state=tk.DISABLED, bg="#D0D0D0")
-        self.status_label.config(text="● 측정 중 (백그라운드 작동)",
-                               fg=self.colors['success'])
         
-        # 키가 눌려있는 상태를 추적
         self.key_pressed = False
         
         # 전역 키보드 리스너 시작
         def on_press(key):
             if self.is_counting and key == self.target_key and not self.key_pressed:
                 self.key_pressed = True
+                
+                current_time = time.time()
+                
+                # 첫 키 입력 시 기록 시작
+                if not self.recording:
+                    self.recording = True
+                    self.first_key_time = current_time
+                    self.last_event_time = current_time
+                
+                elapsed_ms = int((current_time - self.first_key_time) * 1000)
+                
+                if self.last_event_time:
+                    interval_ms = int((current_time - self.last_event_time) * 1000)
+                else:
+                    interval_ms = 0
+                
+                self.last_event_time = current_time
+                
+                try:
+                    key_name = key.char.upper() if hasattr(key, 'char') else key.name.upper()
+                except:
+                    key_name = str(key).replace('Key.', '').upper()
+                
+                self.root.after(0, lambda: self.add_record_entry(key_name, "DOWN", elapsed_ms, interval_ms))
+                
                 self.count += 1
                 self.root.after(0, self.update_count_display)
         
         def on_release(key):
-            if key == self.target_key:
+            if key == self.target_key and self.key_pressed:
                 self.key_pressed = False
+                
+                if self.recording:
+                    current_time = time.time()
+                    elapsed_ms = int((current_time - self.first_key_time) * 1000)
+                    
+                    if self.last_event_time:
+                        interval_ms = int((current_time - self.last_event_time) * 1000)
+                    else:
+                        interval_ms = 0
+                    
+                    self.last_event_time = current_time
+                    
+                    try:
+                        key_name = key.char.upper() if hasattr(key, 'char') else key.name.upper()
+                    except:
+                        key_name = str(key).replace('Key.', '').upper()
+                    
+                    self.root.after(0, lambda: self.add_record_entry(key_name, "UP", elapsed_ms, interval_ms))
         
         self.listener = Listener(on_press=on_press, on_release=on_release)
         self.listener.start()
         
     def stop_counting(self):
-        """카운팅 정지"""
+        """연타 측정 정지"""
         self.is_counting = False
         self.key_pressed = False
+        self.recording = False
         self.start_button.config(state=tk.NORMAL, bg=self.colors['success'])
         self.stop_button.config(state=tk.DISABLED, bg="#D0D0D0")
         self.key_button.config(state=tk.NORMAL, bg=self.colors['primary'])
-        self.status_label.config(text="● 정지됨", fg=self.colors['text_secondary'])
         
         if self.listener:
             self.listener.stop()
             self.listener = None
             
     def reset_count(self):
-        """카운트 초기화"""
+        """카운트 및 기록 초기화"""
+        if self.is_counting:
+            self.stop_counting()
+        
         self.count = 0
+        self.first_key_time = None
+        self.last_event_time = None
+        self.recording = False
+        self.key_pressed = False
         self.update_count_display()
-        self.status_label.config(text="● 카운트 초기화 완료",
-                               fg=self.colors['primary'])
+        
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+    
+    def add_record_entry(self, key_name, event, elapsed_ms, interval_ms):
+        """실시간으로 기록 항목 추가"""
+        interval_text = f"+{interval_ms}ms" if interval_ms > 0 else "-"
+        
+        row_count = len(self.tree.get_children())
+        tag = 'evenrow' if row_count % 2 == 0 else 'oddrow'
+        
+        self.tree.insert('', tk.END,
+                        values=(key_name, event, f"{elapsed_ms}ms", interval_text),
+                        tags=(tag,))
+        
+        # 자동 스크롤
+        children = self.tree.get_children()
+        if children:
+            self.tree.see(children[-1])
         
     def update_count_display(self):
         """카운트 표시 업데이트"""
         self.count_label.config(text=f"{self.count}")
         
     def on_closing(self):
-        """프로그램 종료 시"""
+        """프로그램 종료 시 리스너 정리"""
         if self.listener:
             self.listener.stop()
         self.root.destroy()
