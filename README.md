@@ -2,7 +2,7 @@
 
 실시간 키 연타 횟수 측정 및 기록 프로그램
 
-![Key Counter 스크린샷](/screenshot.png)
+![Key Counter 스크린샷](/key_counter.png)
 
 ## 주요 기능
 
@@ -94,3 +94,4 @@ pip install pynput
 - 다른 키 입력이나 텍스트는 수집하지 않음
 - 모든 데이터는 로컬에서만 처리
 - 네트워크 연결 불필요
+
